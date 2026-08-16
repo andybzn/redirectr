@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SECRETSPEC_PROVIDER: env
+  SECRETSPEC_PROFILE: development
+  SECRETSPEC_REASON: ci
+  DATABASE_URL: sqlite://redirectr.sqlite
+  ADMIN_TOKEN: ci-token
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+      - uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - run: nix profile install github:cachix/devenv/latest --accept-flake-config
+      # fmt + clippy -D warnings + tests, via enterTest -> tasks app:tests
+      - run: devenv test

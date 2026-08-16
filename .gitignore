@@ -1,0 +1,25 @@
+# Tooling
+.envrc
+
+# Nix
+result/
+result*
+
+# Rust
+/target
+
+# Application
+data/
+*.sqlite
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+.mcp.json
+
+# Direnv
+.direnv
+
+# Pre-commit
+.pre-commit-config.yaml

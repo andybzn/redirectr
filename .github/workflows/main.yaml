@@ -1,0 +1,70 @@
+name: main
+
+on:
+    push:
+        branches: [main]
+
+concurrency:
+    group: main
+    cancel-in-progress: false
+
+env:
+    IMAGE: ${{ github.repository }} # andybzn/redirectr
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+        steps:
+            - uses: actions/checkout@v5
+            - uses: cachix/install-nix-action@v31
+              with:
+                  extra_nix_config: experimental-features = nix-command flakes
+
+            # the images embed these binaries, so each target compiles once
+            - run: nix build .#dockerImage-x86_64-linux --out-link image-amd64
+            - run: nix build .#dockerImage-aarch64-linux --out-link image-arm64
+            - run: nix build .#redirectr-x86_64-linux --out-link bin-amd64
+            - run: nix build .#redirectr-aarch64-linux --out-link bin-arm64
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: redirectr-x86_64-linux
+                  path: bin-amd64/bin/redirectr
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: redirectr-aarch64-linux
+                  path: bin-arm64/bin/redirectr
+
+            - uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+            - uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            # both archives carry the same internal tag, so capture the loaded
+            # ref per arch rather than assuming redirectr:<version>
+            - name: Push per-arch images
+              run: |
+                  for arch in amd64 arm64; do
+                    loaded=$(docker load -i "image-$arch" | sed -n 's/^Loaded image: //p')
+                    for reg in "ghcr.io/$IMAGE" "docker.io/$IMAGE"; do
+                      docker tag "$loaded" "$reg:${GITHUB_SHA::7}-$arch"
+                      docker push "$reg:${GITHUB_SHA::7}-$arch"
+                    done
+                  done
+
+            - name: Create multi-arch manifests
+              run: |
+                  for reg in "ghcr.io/$IMAGE" "docker.io/$IMAGE"; do
+                    for tag in "${GITHUB_SHA::7}" latest; do
+                      docker buildx imagetools create -t "$reg:$tag" \
+                        "$reg:${GITHUB_SHA::7}-amd64" "$reg:${GITHUB_SHA::7}-arm64"
+                    done
+                  done
