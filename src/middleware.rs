@@ -45,13 +45,15 @@ pub async fn check_token(
     next: Next,
     token: Arc<str>,
 ) -> Result<Response, StatusCode> {
-    let expected: String = format!("Bearer {token}");
+    let expected_header: String = format!("Bearer {token}");
     match req
         .headers()
         .get(AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
+        .and_then(|header_value| header_value.to_str().ok())
     {
-        Some(h) if validate_auth_header(h, &expected) => Ok(next.run(req).await),
+        Some(header_value) if validate_auth_header(header_value, &expected_header) => {
+            Ok(next.run(req).await)
+        }
         _ => req
             .extensions()
             .get::<ConnectInfo<SocketAddr>>()
@@ -76,8 +78,11 @@ pub async fn check_token(
 /// that the result does not depend on the position of the first differing
 /// byte.
 #[must_use]
-pub fn validate_auth_header(incoming: &str, expected: &str) -> bool {
-    incoming.as_bytes().ct_eq(expected.as_bytes()).into()
+pub fn validate_auth_header(provided_header: &str, expected_header: &str) -> bool {
+    provided_header
+        .as_bytes()
+        .ct_eq(expected_header.as_bytes())
+        .into()
 }
 
 #[cfg(test)]

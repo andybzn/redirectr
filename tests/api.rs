@@ -27,7 +27,7 @@ async fn test_pool() -> SqlitePool {
 fn router(pool: SqlitePool) -> axum::Router {
     redirectr::app(
         pool,
-        Arc::from("realtoken"),
+        &Arc::from("realtoken"),
         Arc::from("https://default.example"),
     )
 }
@@ -58,6 +58,32 @@ async fn get(pool: &SqlitePool, uri: &str) -> axum::response::Response {
         .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
         .await
         .unwrap()
+}
+
+async fn patch(pool: &SqlitePool, auth: Option<&str>, code: &str, url: &str) -> StatusCode {
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri(format!("/?code={code}&url={}", enc(url)));
+    if let Some(a) = auth {
+        req = req.header("Authorization", a);
+    }
+    router(pool.clone())
+        .oneshot(req.body(Body::empty()).unwrap())
+        .await
+        .unwrap()
+        .status()
+}
+
+async fn delete(pool: &SqlitePool, auth: Option<&str>, code: &str) -> StatusCode {
+    let mut req = Request::builder().method("DELETE").uri(format!("/{code}"));
+    if let Some(a) = auth {
+        req = req.header("Authorization", a);
+    }
+    router(pool.clone())
+        .oneshot(req.body(Body::empty()).unwrap())
+        .await
+        .unwrap()
+        .status()
 }
 
 #[tokio::test]
@@ -223,6 +249,120 @@ async fn created_at_is_parseable_utc() {
     assert!(
         skew < 60,
         "created_at must be current UTC, off by {skew}s (timezone shift?)"
+    );
+}
+
+#[tokio::test]
+async fn patch_updates_existing_link() {
+    let pool = test_pool().await;
+    post(&pool, Some("Bearer realtoken"), "mv", "https://old.example").await;
+
+    let status = patch(&pool, Some("Bearer realtoken"), "mv", "https://new.example").await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "update must succeed");
+
+    let res = get(&pool, "/mv").await;
+    assert_eq!(
+        res.headers()["location"],
+        "https://new.example/",
+        "target must be repointed"
+    );
+}
+
+#[tokio::test]
+async fn patch_unknown_code_is_404() {
+    let pool = test_pool().await;
+    let status = patch(
+        &pool,
+        Some("Bearer realtoken"),
+        "nope",
+        "https://new.example",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "must reject unknown code");
+}
+
+#[tokio::test]
+async fn patch_bad_tokens_rejected() {
+    let pool = test_pool().await;
+    post(&pool, Some("Bearer realtoken"), "pt", "https://old.example").await;
+    for auth in [
+        Some("Bearer nope"),
+        Some("Bearer "),
+        Some("realtoken"),
+        None,
+    ] {
+        assert_eq!(
+            patch(&pool, auth, "pt", "https://new.example").await,
+            StatusCode::UNAUTHORIZED,
+            "must reject {auth:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn patch_non_http_scheme_rejected() {
+    let pool = test_pool().await;
+    post(&pool, Some("Bearer realtoken"), "ps", "https://old.example").await;
+    let status = patch(&pool, Some("Bearer realtoken"), "ps", "javascript:alert(1)").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "must reject bad scheme");
+
+    let res = get(&pool, "/ps").await;
+    assert_eq!(
+        res.headers()["location"],
+        "https://old.example/",
+        "rejected update must not repoint the link"
+    );
+}
+
+#[tokio::test]
+async fn delete_removes_link() {
+    let pool = test_pool().await;
+    post(&pool, Some("Bearer realtoken"), "rm", "https://ok.example").await;
+
+    let status = delete(&pool, Some("Bearer realtoken"), "rm").await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "delete must succeed");
+
+    let res = get(&pool, "/rm").await;
+    assert_eq!(
+        res.status(),
+        StatusCode::NOT_FOUND,
+        "deleted code must no longer resolve"
+    );
+}
+
+#[tokio::test]
+async fn delete_unknown_code_still_no_content() {
+    let pool = test_pool().await;
+    let status = delete(&pool, Some("Bearer realtoken"), "ghost").await;
+    assert_eq!(
+        status,
+        StatusCode::NO_CONTENT,
+        "deleting a nonexistent code must still succeed"
+    );
+}
+
+#[tokio::test]
+async fn delete_bad_tokens_rejected() {
+    let pool = test_pool().await;
+    post(&pool, Some("Bearer realtoken"), "dt", "https://ok.example").await;
+    for auth in [
+        Some("Bearer nope"),
+        Some("Bearer "),
+        Some("realtoken"),
+        None,
+    ] {
+        assert_eq!(
+            delete(&pool, auth, "dt").await,
+            StatusCode::UNAUTHORIZED,
+            "must reject {auth:?}"
+        );
+    }
+
+    let res = get(&pool, "/dt").await;
+    assert_eq!(
+        res.status(),
+        StatusCode::FOUND,
+        "rejected delete must not remove the link"
     );
 }
 

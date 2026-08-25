@@ -93,6 +93,79 @@ pub async fn post(
     crate::helpers::match_insert_result(res)
 }
 
+/// Deletes the short link identified by `code`.
+///
+/// Successful deletions return `204 No Content`. If no link exists for
+/// `code`, the operation still succeeds with `204 No Content`.
+///
+/// # Errors
+///
+/// Returns [`StatusCode::INTERNAL_SERVER_ERROR`] when the database query
+/// fails.
+///
+/// # Arguments
+///
+/// * `code` - Short-link code to delete.
+/// * `pool` - `SQLite` connection pool used to delete the link.
+pub async fn delete(
+    Path(code): Path<String>,
+    State(pool): State<SqlitePool>,
+) -> Result<StatusCode, StatusCode> {
+    event!(Level::DEBUG, "DELETE: Received code: {code}");
+
+    sqlx::query!("DELETE FROM links WHERE code == $1", code)
+        .execute(&pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Updates the target URL for an existing short link.
+///
+/// The `url` is validated and normalized by [`crate::helpers::validate_url`]
+/// before it is stored. Successful updates return `204 No Content`.
+///
+/// # Errors
+///
+/// Returns [`StatusCode::BAD_REQUEST`] when `url` is invalid or does not use
+/// the `http` or `https` scheme. Returns [`StatusCode::NOT_FOUND`] when no
+/// link exists for `code`, or [`StatusCode::INTERNAL_SERVER_ERROR`] for a
+/// database error.
+///
+/// # Arguments
+///
+/// * `params` - Query parameters containing the link code and target URL.
+/// * `pool` - `SQLite` connection pool used to update the link.
+pub async fn patch(
+    params: Query<RedirectParams>,
+    State(pool): State<SqlitePool>,
+) -> Result<StatusCode, StatusCode> {
+    event!(Level::DEBUG, "PATCH: Received code: {}", params.code);
+
+    let validated_url: String = crate::helpers::validate_url(&params.url)?;
+
+    let validate_code_exists = sqlx::query!("SELECT url FROM links WHERE code = $1", &params.code)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if validate_code_exists.is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    sqlx::query!(
+        "UPDATE links SET url = $1 WHERE code = $2",
+        &validated_url,
+        &params.code,
+    )
+    .execute(&pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Redirects to the configured default URL.
 ///
 /// This is the handler for `GET /`, giving requests that carry no short-link

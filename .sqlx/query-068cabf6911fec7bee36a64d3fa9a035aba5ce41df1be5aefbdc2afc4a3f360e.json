@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM links WHERE code == $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "068cabf6911fec7bee36a64d3fa9a035aba5ce41df1be5aefbdc2afc4a3f360e"
+}
