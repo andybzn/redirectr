@@ -19,6 +19,7 @@ jobs:
             packages: write
         steps:
             - uses: actions/checkout@v5
+            - run: echo "VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_ENV"
             - uses: cachix/install-nix-action@v31
               with:
                   extra_nix_config: experimental-features = nix-command flakes
@@ -63,7 +64,7 @@ jobs:
             - name: Create multi-arch manifests
               run: |
                   for reg in "ghcr.io/$IMAGE" "docker.io/$IMAGE"; do
-                    for tag in "${GITHUB_SHA::7}" latest; do
+                    for tag in "${GITHUB_SHA::7}" "$VERSION" latest; do
                       docker buildx imagetools create -t "$reg:$tag" \
                         "$reg:${GITHUB_SHA::7}-amd64" "$reg:${GITHUB_SHA::7}-arm64"
                     done
