@@ -13,7 +13,7 @@ env:
   SECRETSPEC_REASON: ci
   DATABASE_URL: sqlite://redirectr.sqlite
   ADMIN_TOKEN: ci-token
-  SQL_OFFLINE: true
+  SQLX_OFFLINE: true
 
 jobs:
   test:
