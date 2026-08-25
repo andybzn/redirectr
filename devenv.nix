@@ -71,7 +71,7 @@
       showOutput = true;
     };
     "app:tests" = {
-      after = ["db:prepare"];
+      # after = ["db:prepare"];
       exec = ''
         cargo fmt --check
         cargo clippy --all-targets -- -D warnings
@@ -104,6 +104,6 @@
 
   # Outputs
   outputs = {
-    rust-app = config.languages.rust.import ./. {};
+    rust-app = config.languages.rust.import ./. { };
   };
 }

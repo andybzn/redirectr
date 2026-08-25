@@ -7,7 +7,7 @@ A lightweight, fast, self-hosted shortlink redirection service written in Rust u
 ## Features
 
 - **Fast HTTP 302 Redirection:** Instant lookups backed by SQLite.
-- **Secure Link Creation:** Protected by Bearer token authentication with constant-time equality checks to mitigate timing attacks.
+- **Secure Link Management:** Create, update, and delete links, all protected by Bearer token authentication with constant-time equality checks to mitigate timing attacks.
 - **URL Scheme Validation:** Only accepts `http://` and `https://` URLs to prevent protocol abuse.
 - **Default Fallback:** Visiting `/` redirects to a configurable landing page or repository URL.
 - **Health Check Endpoint:** Probes the SQLite database schema for zero-downtime health monitors and container orchestrators.
@@ -69,7 +69,7 @@ docker compose up -d
 
 | Variable       | Required | Default                                | Description                                                    |
 | -------------- | -------- | -------------------------------------- | -------------------------------------------------------------- |
-| `ADMIN_TOKEN`  | **Yes**  | —                                      | Bearer token required to create links via `POST /`.            |
+| `ADMIN_TOKEN`  | **Yes**  | —                                      | Bearer token required to create, update, or delete links via `POST /`, `PATCH /`, and `DELETE /{code}`. |
 | `SERVER_IP`    | No       | `127.0.0.1`                            | IP address to bind the HTTP server to (`0.0.0.0` for Docker).  |
 | `SERVER_PORT`  | No       | `3333`                                 | TCP port the HTTP server listens on.                           |
 | `DATABASE_URL` | No       | `sqlite://redirectr.sqlite`            | SQLite connection URL (file created automatically if missing). |
@@ -111,7 +111,39 @@ curl -i -X POST "http://localhost:3333/?code=gh&url=https%3A%2F%2Fgithub.com%2Fa
 
 ---
 
-### 3. Root Fallback
+### 3. Update Shortlink
+
+- **Route:** `PATCH /?code=<code>&url=<target_url>`
+- **Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+- **Response:**
+    - `204 No Content` on success
+    - `400 Bad Request` if the target URL is invalid or uses an unsupported scheme
+    - `401 Unauthorized` if the bearer token is missing or invalid
+    - `404 Not Found` if the `code` does not exist
+
+```bash
+curl -i -X PATCH "http://localhost:3333/?code=gh&url=https%3A%2F%2Fgithub.com%2Fandybzn%2Fredirectr2" \
+  -H "Authorization: Bearer your-super-secret-token"
+```
+
+---
+
+### 4. Delete Shortlink
+
+- **Route:** `DELETE /{code}`
+- **Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+- **Response:**
+    - `204 No Content` on success, whether or not the code existed
+    - `401 Unauthorized` if the bearer token is missing or invalid
+
+```bash
+curl -i -X DELETE "http://localhost:3333/gh" \
+  -H "Authorization: Bearer your-super-secret-token"
+```
+
+---
+
+### 5. Root Fallback
 
 - **Route:** `GET /`
 - **Response:** `302 Found` redirecting to the configured `DEFAULT_URL`.
@@ -122,7 +154,7 @@ curl -i http://localhost:3333/
 
 ---
 
-### 4. Health Check
+### 6. Health Check
 
 - **Route:** `GET /health`
 - **Response:**

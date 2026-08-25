@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     event!(Level::INFO, "Database migrations completed successfully.");
 
     event!(Level::INFO, "Spawning redirectr server...");
-    let app: axum::Router = redirectr::app(pool, admin_token, default_url);
+    let app: axum::Router = redirectr::app(pool, &admin_token, default_url);
     let address: String = format!("{0}:{1}", config.server_ip, config.server_port);
     let listener: TcpListener = TcpListener::bind(&address).await?;
     event!(Level::INFO, "Server listening on {address}");
