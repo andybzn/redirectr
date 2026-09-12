@@ -2,6 +2,10 @@ name: ci
 
 on:
   pull_request:
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
 
 concurrency:
   group: ci-${{ github.ref }}
